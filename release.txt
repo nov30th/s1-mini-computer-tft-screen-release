@@ -2,8 +2,11 @@
 
 Functional verification version, unadded functions include restful interface, listing the display of various virtual machine CPU, memory, hard disk, network resources of PVE, and the display of host resources
 
+core.exe Windows Version
+core.bin Linux Version
 
-当前是windows版本，由python打包运行。后续会release全系列平台。
 
-Currently it is a windows version, run by python packaging. The linux and others of platforms will be released later.
+Linux commands:
 
+chmod +x core.bin
+./core.bin

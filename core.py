@@ -3,6 +3,7 @@
 # @Author  : Nov30th, HOHO``
 
 import asyncio
+import base64
 import os
 import sys
 import time
@@ -12,6 +13,9 @@ from sys import exit
 import hid
 import numpy as np
 import psutil
+from Crypto.Hash import SHA256
+from Crypto.PublicKey import RSA
+from Crypto.Signature import pkcs1_15
 from PIL import Image, ImageDraw, ImageFont
 
 # 全局变量来存储设备实例
@@ -24,6 +28,47 @@ network_latest_recv = 0
 network_latest_recv_snapshot_at = 0
 network_latest_sent = 0
 network_latest_sent_snapshot_at = 0
+
+
+def verify_image(image_path, signature_base64):
+    # 读取公钥
+    with open("keys/public.pem", "rb") as pub_file:
+        public_key = RSA.import_key(pub_file.read())
+
+    # 读取图片数据
+    with open(image_path, "rb") as image_file:
+        image_data = image_file.read()
+
+    # 生成摘要
+    hash = SHA256.new(image_data)
+
+    # 验证签名
+    try:
+        signature = base64.b64decode(signature_base64)
+        verifier = pkcs1_15.new(public_key)
+        verifier.verify(hash, signature)
+        return True
+    except (ValueError, TypeError):
+        return False
+
+
+def load_image_file(filename: str):
+    if not os.path.exists("images/load_data.txt"):
+        print("Error: images/load_data.txt not found.")
+        sys.exit(1)
+    with open("images/load_data.txt", "r") as load_data_file:
+        for line in load_data_file:
+            image_uuid, image_name, signature_base64 = line.strip().split("|")
+            if image_name == filename:
+                image_path = os.path.join("images", image_name)
+                # verify image
+                result = verify_image(image_path, signature_base64)
+                if result:
+                    return Image.open(rf"images/{image_name}")
+
+    print(rf"{filename} image not found")
+    time.sleep(5)
+    exit(1)
 
 
 def get_text_dimensions(text_string, font):
@@ -59,11 +104,11 @@ def add_text_and_border(image, text, position, padding):
 
 def load_image(loading=False):
     if loading:
-        # if not found the image, show error
-        if not os.path.exists("images/init.png"):
-            print("Error: images/init.png not found.")
-            sys.exit(1)
-        image = Image.open("images/init.png").convert('RGBA')
+        # # if not found the image, show error
+        # if not os.path.exists("images/init.png"):
+        #     print("Error: init.png not found.")
+        #     sys.exit(1)
+        image = load_image_file("init.png").convert('RGBA')
         text = "Still under development"
         text2 = "Demo version"
         # text_position = (50, 50)
@@ -77,14 +122,14 @@ def load_image(loading=False):
         disk = get_disk_usage()
 
         if memory > 90 or disk > 90:
-            image_filename = "images/error.png"
+            image_filename = "error.png"
         else:
             if cpu > 80 or memory > 80 or disk > 80:
-                image_filename = "images/warn.png"
+                image_filename = "warn.png"
             else:
-                image_filename = "images/init.png"
+                image_filename = "init.png"
 
-        image = Image.open(image_filename).convert('RGBA')
+        image = load_image_file(image_filename).convert('RGBA')
 
         text = "Network IP: " + get_network_ip()
         text_position = (20, 25)
@@ -144,10 +189,10 @@ def load_image(loading=False):
         image = add_text_and_border(image, text, text_position, padding)
 
         # Load the icon images
-        cpu_icon = Image.open('images/cpuicon.png').resize((30, 30))
-        memory_icon = Image.open('images/memoryicon.png').resize((30, 30))
-        disk_icon = Image.open('images/diskicon.png').resize((30, 30))
-        network_icon = Image.open('images/networkicon.png').resize((30, 30))
+        cpu_icon = load_image_file('cpuicon.png').resize((30, 30))
+        memory_icon = load_image_file('memoryicon.png').resize((30, 30))
+        disk_icon = load_image_file('diskicon.png').resize((30, 30))
+        network_icon = load_image_file('networkicon.png').resize((30, 30))
 
         # Paste the icons onto the main image
         image.paste(cpu_icon, (15, 50), cpu_icon.convert('RGBA'))
@@ -263,7 +308,7 @@ async def sends_testing_background(loading=False):
     global is_sending_background
     is_sending_background = True
     try:
-        print("Sending background data...")
+        # print("Sending background data...")
         # 你的sends_testing_background逻辑
         # 请在这里添加相应的异步发送数据代码
 
@@ -304,7 +349,7 @@ async def sends_testing_background(loading=False):
         print(f"Error sending background data: {e}")
     finally:
         is_sending_background = False
-    print("Background data sent successfully.")
+    # print("Background data sent successfully.")
 
 
 # 获取网卡的每秒流量

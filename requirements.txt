@@ -1,4 +1,5 @@
 hidapi
-Pillow==9.4.0
+Pillow
 numpy
 psutil
+pycryptodome

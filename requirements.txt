@@ -3,3 +3,5 @@ Pillow
 numpy
 psutil
 pycryptodome
+proxmoxer
+requests

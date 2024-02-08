@@ -4,6 +4,7 @@
 
 import asyncio
 import base64
+import json
 import os
 import sys
 import time
@@ -17,6 +18,7 @@ from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
 from Crypto.Signature import pkcs1_15
 from PIL import Image, ImageDraw, ImageFont
+from proxmoxer import ProxmoxAPI
 
 # 全局变量来存储设备实例
 global_device = None
@@ -28,6 +30,8 @@ network_latest_recv = 0
 network_latest_recv_snapshot_at = 0
 network_latest_sent = 0
 network_latest_sent_snapshot_at = 0
+
+device_opened = False
 
 
 def verify_image(image_path, signature_base64):
@@ -102,6 +106,99 @@ def add_text_and_border(image, text, position, padding):
     return image
 
 
+async def fetch_status(proxmox, node_name, item, item_type, prev_net_stats):
+    """异步获取VM或CT的状态信息，并计算网速"""
+    if item_type == 'lxc':
+        status = proxmox.nodes(node_name).lxc(item['vmid']).status.current.get()
+    else:  # qemu
+        status = proxmox.nodes(node_name).qemu(item['vmid']).status.current.get()
+
+    vmid = status['vmid']
+    netin = status['netin']
+    netout = status['netout']
+    # 计算网速
+    if vmid in prev_net_stats:
+        calc_time = prev_net_stats[vmid]['calc_time']
+        netin_speed = (netin - prev_net_stats[vmid]['netin']) / (time.time() - calc_time)
+        netout_speed = (netout - prev_net_stats[vmid]['netout']) / (time.time() - calc_time)
+        if netin_speed < 0 or netout_speed < 0:
+            netin_speed, netout_speed = 0, 0
+    else:
+        netin_speed, netout_speed = 0, 0  # 首次检查，无法计算网速
+
+    # 更新当前状态以用于下一次计算
+    prev_net_stats[vmid] = {'netin': netin, 'netout': netout, 'calc_time': time.time()}
+
+    net_speed = netin_speed + netout_speed
+    return status, net_speed
+
+
+async def load_image_pve(loading=False):
+    height = 320
+    width = 170
+    with open("config.json", "r") as f:
+        config = json.load(f)
+    proxmox = ProxmoxAPI(config['proxmox_host'], user=config['proxmox_user'], password=config['proxmox_password'],
+                         verify_ssl=False)
+    prev_net_stats = {}  # 保存前一次的网络流量状态
+
+    nodes = proxmox.nodes.get()
+    running_items = []
+
+    for node in nodes:
+        node_name = node['node']
+        # 获取该节点上的所有CT和VM
+        containers = proxmox.nodes(node_name).lxc.get()
+        virtual_machines = proxmox.nodes(node_name).qemu.get()
+
+        # 异步获取所有CT和VM的状态
+        # 异步获取所有CT和VM的状态，并计算网速
+        tasks = [fetch_status(proxmox, node_name, item, 'lxc', prev_net_stats) for item in containers if
+                 item['status'] == 'running']
+        tasks += [fetch_status(proxmox, node_name, vm, 'qemu', prev_net_stats) for vm in virtual_machines if
+                  vm['status'] == 'running']
+        results = await asyncio.gather(*tasks)
+
+        # 处理状态信息，提取所需数据
+        for status, net_speed in results:
+            mem_usage_rate = (status['mem'] / status['maxmem']) if 'mem' in status else None
+            net_speed_str = f"{net_speed / 1024:.0f}k" if net_speed < 1024 * 1024 else f"{net_speed / 1024 / 1024:.0f}m"
+            running_items.append({'id': status['vmid'], 'name': status.get('name', ''), 'cpu_usage': status['cpu'],
+                'mem_usage_rate': mem_usage_rate, 'net_speed': net_speed_str})
+
+    # 按CPU使用率排序并输出前5个
+    # sorted_items = sorted(running_items, key=lambda x: x['cpu_usage'], reverse=True)[:5]
+    # for item in sorted_items:
+    #     print(f"ID: {item['id']}, Name: {item['name']}, CPU Usage: {item['cpu_usage']:.0%}, "
+    #           f"Memory Usage: {item['mem_usage_rate']:.0%}, Net Speed: {item['net_speed']}")
+
+    image = load_image_file("init.png").convert('RGBA')
+    # rotate the image 90 degrees
+    image = image.rotate(90, expand=True)
+    text = "PVE Status"
+    text_position = (50, 50)
+    padding = 5
+    image = add_text_and_border(image, text, text_position, padding)
+    #
+    # text = "CPU: " + str(sorted_items[0]['cpu_usage']) + "%"
+    # text_position = (50, 80)
+    # padding = 5
+    # image = add_text_and_border(image, text, text_position, padding)
+    #
+    # text = "MEM: " + str(sorted_items[0]['mem_usage_rate']) + "%"
+    # text_position = (50, 110)
+    # padding = 5
+    # image = add_text_and_border(image, text, text_position, padding)
+    #
+    # text = "NET: " + str(sorted_items[0]['net_speed'])
+    # text_position = (50, 140)
+    # padding = 5
+    # image = add_text_and_border(image, text, text_position, padding)
+
+    image_array = np.array(image)
+    return image_array
+
+
 def load_image(loading=False):
     if loading:
         # # if not found the image, show error
@@ -111,11 +208,11 @@ def load_image(loading=False):
         image = load_image_file("init.png").convert('RGBA')
         text = "Still under development"
         text2 = "Demo version"
-        # text_position = (50, 50)
-        # text_position2 = (70, 110)
-        # padding = 5
-        # image = add_text_and_border(image, text, text_position, padding)
-        # image = add_text_and_border(image, text2, text_position2, padding)
+        text_position = (50, 50)
+        text_position2 = (70, 110)
+        padding = 5
+        image = add_text_and_border(image, text, text_position, padding)
+        image = add_text_and_border(image, text2, text_position2, padding)
     else:
         cpu = get_cpu_usage()
         memory = get_memory_usage()
@@ -217,7 +314,8 @@ def open_device_by_id(vendor_id, product_id):
     global global_device
     print("Now Searching....")
     devices = hid.enumerate(vendor_id, product_id)
-    target_device_info = next((device for device in devices if device['vendor_id'] == vendor_id and device['product_id'] == product_id), None)
+    target_device_info = next(
+        (device for device in devices if device['vendor_id'] == vendor_id and device['product_id'] == product_id), None)
     if target_device_info:
         try:
             device = hid.device()
@@ -240,12 +338,12 @@ async def open_device_async(vendor_id, product_id):
     loop = asyncio.get_running_loop()
     result = await loop.run_in_executor(None, open_device_by_id, vendor_id, product_id)
     if not result:
-        print("Error opening device. Exiting after 10 seconds.")
-        # list all hid usb devices
-        print(hid.enumerate())
-        await asyncio.sleep(10)
-        sys.exit(1)
-    print("Device opened successfully.")
+        print(
+            "Error opening device. Run into debug mode, image will be shown.")  # # list all hid usb devices  # print(hid.enumerate())  # await asyncio.sleep(10)  # sys.exit(1)
+    else:
+        global device_opened
+        device_opened = True
+        print("Device opened successfully.")
 
 
 def hex_string_to_byte_array_with_00(hex_string, total_length=4104):
@@ -260,8 +358,7 @@ def send_data(device, data):
     if device:
         try:
             data_with_report_id = [0] + list(data)
-            device.write(data_with_report_id)
-            # print("Data sent successfully.")
+            device.write(data_with_report_id)  # print("Data sent successfully.")
         except IOError as e:
             # print(f"Error sending data: {e}")
             pass
@@ -287,7 +384,8 @@ async def periodic_send_data():
             current_hour = int(time.strftime("%H"))
             current_minute = int(time.strftime("%M"))
             current_second = int(time.strftime("%S"))
-            pre_end_data += format(current_hour, '02x') + " " + format(current_minute, '02x') + " " + format(current_second, '02x')
+            pre_end_data += format(current_hour, '02x') + " " + format(current_minute, '02x') + " " + format(
+                current_second, '02x')
             data_to_send = hex_string_to_byte_array_normal(pre_end_data)
             send_data(global_device, data_to_send)
         await asyncio.sleep(0.5)
@@ -316,40 +414,46 @@ async def sends_testing_background(loading=False):
         data_to_send = hex_string_to_byte_array_with_00(pre_end_data)
         send_data(global_device, data_to_send)
 
-        org_image_array = load_image(loading)
-        rgb565_array = rgb_to_rgb565(org_image_array)
-        image_array = rgb565_array.byteswap().tobytes()
+        # org_image_array = load_image(loading)
+        org_image_array = await load_image_pve(loading)
 
-        for x in range(0, 26):
-            x_str = format(x + 1, '02x')
-            second_str = format(x % 16, 'x')
-            pre_str = '0' if x == 0 else '1'
-            # pre_str = str(int((x+1)/16))
-            hex_data = "55 A3 F" + pre_str + " " + x_str + " 00 " + second_str + "0 00 10"
-            # print(hex_data)
-            # adds top 4096 bytes of image_array after hex_data, and removes the 4096 bytes from image_array
-            if len(image_array) >= 4096:
-                hex_data = hex_data + " " + image_array[:4096].hex()
-                image_array = image_array[4096:]
-            hex_string_to_byte_array(hex_data)
-            data_to_send = hex_string_to_byte_array(hex_data)
+        if device_opened:
+            rgb565_array = rgb_to_rgb565(org_image_array)
+            image_array = rgb565_array.byteswap().tobytes()
+
+            for x in range(0, 26):
+                x_str = format(x + 1, '02x')
+                second_str = format(x % 16, 'x')
+                pre_str = '0' if x == 0 else '1'
+                # pre_str = str(int((x+1)/16))
+                hex_data = "55 A3 F" + pre_str + " " + x_str + " 00 " + second_str + "0 00 10"
+                # print(hex_data)
+                # adds top 4096 bytes of image_array after hex_data, and removes the 4096 bytes from image_array
+                if len(image_array) >= 4096:
+                    hex_data = hex_data + " " + image_array[:4096].hex()
+                    image_array = image_array[4096:]
+                hex_string_to_byte_array(hex_data)
+                data_to_send = hex_string_to_byte_array(hex_data)
+                send_data(global_device, data_to_send)
+            pre_end_data = "55 A3 F2 1B 00 A0 00 09"
+
+            if len(image_array) > 4096:
+                print("ERROR! too large for end")
+                sys.exit(1)
+            pre_end_data = pre_end_data + " " + image_array.hex()
+            data_to_send = hex_string_to_byte_array_with_00(pre_end_data)
             send_data(global_device, data_to_send)
-        pre_end_data = "55 A3 F2 1B 00 A0 00 09"
+            end_data = "55 A1 F1 01"
+            data_to_send = hex_string_to_byte_array(end_data)
+            send_data(global_device, data_to_send)
+        else:
+            # plot the image if the device is not opened
+            Image.fromarray(org_image_array).show()
 
-        if len(image_array) > 4096:
-            print("ERROR! too large for end")
-            sys.exit(1)
-        pre_end_data = pre_end_data + " " + image_array.hex()
-        data_to_send = hex_string_to_byte_array_with_00(pre_end_data)
-        send_data(global_device, data_to_send)
-        end_data = "55 A1 F1 01"
-        data_to_send = hex_string_to_byte_array(end_data)
-        send_data(global_device, data_to_send)
     except Exception as e:
         print(f"Error sending background data: {e}")
     finally:
-        is_sending_background = False
-    # print("Background data sent successfully.")
+        is_sending_background = False  # print("Background data sent successfully.")
 
 
 # 获取网卡的每秒流量
@@ -357,10 +461,7 @@ def get_network_traffic():
     net_io = psutil.net_io_counters(pernic=True)
     traffic_details = {}
     for interface, io_counters in net_io.items():
-        traffic_details[interface] = {
-            'sent': io_counters.bytes_sent,
-            'recv': io_counters.bytes_recv
-        }
+        traffic_details[interface] = {'sent': io_counters.bytes_sent, 'recv': io_counters.bytes_recv}
         break
     # returns first interface
     if len(traffic_details) == 0:
@@ -394,11 +495,11 @@ async def main():
 
     if global_device:
         send_task = asyncio.create_task(periodic_send_data())
-        refresh_task = asyncio.create_task(periodic_refresh_screen())
-        await sends_testing_background(loading=True)
-        # send_task.cancel()  # 取消周期性发送任务
-        # read input line
-        await asyncio.sleep(99999)
+    refresh_task = asyncio.create_task(periodic_refresh_screen())
+    await sends_testing_background(loading=True)
+    # send_task.cancel()  # 取消周期性发送任务
+    # read input line
+    await asyncio.sleep(99999)
 
 
 if __name__ == "__main__":

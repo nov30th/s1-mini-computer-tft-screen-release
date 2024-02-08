@@ -198,7 +198,7 @@ async def load_image_pve(loading=False):
         # 处理状态信息，提取所需数据
         for status, net_speed in results:
             mem_usage_rate = (status['mem'] / status['maxmem']) if 'mem' in status else None
-            net_speed_str = f"{net_speed / 1024:.0f}k" if net_speed < 1024 * 1024 else f"{net_speed / 1024 / 1024:.0f}m"
+            net_speed_str = f"{net_speed / 1024 / 8:.0f}k" if net_speed < 1024 * 1024 * 8 else f"{net_speed / 1024 / 1024 / 8:.0f}m"
             running_items.append({'id': status['vmid'], 'name': status.get('name', ''), 'cpu_usage': status['cpu'],
                                   'mem_usage_rate': mem_usage_rate, 'net_speed': net_speed_str})
 

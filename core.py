@@ -11,14 +11,21 @@ import time
 # noinspection PyUnresolvedReferences
 from sys import exit
 
+# import cv2
 import hid
 import numpy as np
 import psutil
+import requests
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
 from Crypto.Signature import pkcs1_15
 from PIL import Image, ImageDraw, ImageFont
 from proxmoxer import ProxmoxAPI
+from urllib3 import disable_warnings
+from urllib3.exceptions import InsecureRequestWarning
+
+# Disable InsecureRequestWarning
+disable_warnings(InsecureRequestWarning)
 
 # 全局变量来存储设备实例
 global_device = None
@@ -33,11 +40,21 @@ network_latest_sent_snapshot_at = 0
 
 device_opened = False
 
+prev_net_stats = {}  # 保存前一次的网络流量状态
+
 
 def verify_image(image_path, signature_base64):
     # 读取公钥
     with open("keys/public.pem", "rb") as pub_file:
         public_key = RSA.import_key(pub_file.read())
+
+    # calc public.pem md5 hash
+    with open("keys/public.pem", "rb") as pub_file:
+        pub_data = pub_file.read()
+        pub_md5 = SHA256.new(pub_data).hexdigest()
+        if pub_md5 != '9d2cc7c5a47584db70975feccb9dd526d5e39fee8809fa1836c24e134f1fcf47':
+            return False
+        # print(f"public.pem md5: {pub_md5}")
 
     # 读取图片数据
     with open(image_path, "rb") as image_file:
@@ -86,9 +103,28 @@ def alpha_composite(background, foreground, alpha):
     return foreground * (alpha / 255.0) + background * (1 - alpha / 255.0)
 
 
-def add_text_and_border(image, text, position, padding):
+def add_text_only(image, text, position, color=(255, 255, 255, 255)):
     draw = ImageDraw.Draw(image, 'RGBA')
-    font = ImageFont.truetype('fonts/JetBrainsMono-Regular-2.ttf', 16)
+    font = ImageFont.truetype('fonts/JetBrainsMono-Regular-2.ttf', 18)
+    draw.text(position, text, fill=color, font=font)
+    return image
+
+
+def add_border_only(image, start_position, end_position):
+    alpha_value = 160
+    image_array = np.array(image)
+    for y in range(start_position[1], end_position[1]):
+        for x in range(start_position[0], end_position[0]):
+            bg_color = image_array[y, x, :3]
+            fg_color = np.array([0, 0, 0])
+            composite_color = alpha_composite(bg_color, fg_color, alpha_value)
+            image_array[y, x, :3] = composite_color.astype(np.uint8)
+    image = Image.fromarray(image_array)
+    return image
+
+
+def add_text_and_border(image, text, position, padding):
+    font = ImageFont.truetype('fonts/JetBrainsMono-Regular-2.ttf', 15)
     text_width, text_height = get_text_dimensions(text, font)
     x0, y0 = position[0] - padding, position[1] - padding
     x1, y1 = x0 + text_width + 2 * padding, y0 + text_height + 2 * padding
@@ -134,13 +170,12 @@ async def fetch_status(proxmox, node_name, item, item_type, prev_net_stats):
 
 
 async def load_image_pve(loading=False):
-    height = 320
-    width = 170
+    height = 170
+    width = 320
     with open("config.json", "r") as f:
         config = json.load(f)
     proxmox = ProxmoxAPI(config['proxmox_host'], user=config['proxmox_user'], password=config['proxmox_password'],
                          verify_ssl=False)
-    prev_net_stats = {}  # 保存前一次的网络流量状态
 
     nodes = proxmox.nodes.get()
     running_items = []
@@ -164,38 +199,114 @@ async def load_image_pve(loading=False):
             mem_usage_rate = (status['mem'] / status['maxmem']) if 'mem' in status else None
             net_speed_str = f"{net_speed / 1024:.0f}k" if net_speed < 1024 * 1024 else f"{net_speed / 1024 / 1024:.0f}m"
             running_items.append({'id': status['vmid'], 'name': status.get('name', ''), 'cpu_usage': status['cpu'],
-                'mem_usage_rate': mem_usage_rate, 'net_speed': net_speed_str})
+                                  'mem_usage_rate': mem_usage_rate, 'net_speed': net_speed_str})
 
     # 按CPU使用率排序并输出前5个
-    # sorted_items = sorted(running_items, key=lambda x: x['cpu_usage'], reverse=True)[:5]
-    # for item in sorted_items:
-    #     print(f"ID: {item['id']}, Name: {item['name']}, CPU Usage: {item['cpu_usage']:.0%}, "
-    #           f"Memory Usage: {item['mem_usage_rate']:.0%}, Net Speed: {item['net_speed']}")
+    sorted_items = sorted(running_items, key=lambda x: x['cpu_usage'], reverse=True)[:5]
+    for item in sorted_items:
+        print(f"ID: {item['id']}, Name: {item['name']}, CPU Usage: {item['cpu_usage']:.0%}, "
+              f"Memory Usage: {item['mem_usage_rate']:.0%}, Net Speed: {item['net_speed']}")
 
-    image = load_image_file("init.png").convert('RGBA')
+    level = 0
+    # if any cpu is over 80%, show warn.png
+    for item in sorted_items:
+        if item['cpu_usage'] > 0.95:
+            level = 2
+            break
+        if item['cpu_usage'] > 0.85:
+            level = 1
+            break
+    if level == 2:
+        image = load_image_file("error.png").convert('RGBA')
+    elif level == 1:
+        image = load_image_file("warn.png").convert('RGBA')
+    else:
+        image = load_image_file("init.png").convert('RGBA')
+
     # rotate the image 90 degrees
-    image = image.rotate(90, expand=True)
-    text = "PVE Status"
-    text_position = (50, 50)
-    padding = 5
-    image = add_text_and_border(image, text, text_position, padding)
+    # image = image.rotate(90, expand=True)
+
+    start_x = 30
+    item_y = 20
+    per_start_y = width // 5
+
     #
-    # text = "CPU: " + str(sorted_items[0]['cpu_usage']) + "%"
-    # text_position = (50, 80)
+    # text = "PVE Status"
+    # text_position = (50, 50)
     # padding = 5
     # image = add_text_and_border(image, text, text_position, padding)
-    #
-    # text = "MEM: " + str(sorted_items[0]['mem_usage_rate']) + "%"
-    # text_position = (50, 110)
-    # padding = 5
-    # image = add_text_and_border(image, text, text_position, padding)
-    #
-    # text = "NET: " + str(sorted_items[0]['net_speed'])
-    # text_position = (50, 140)
-    # padding = 5
-    # image = add_text_and_border(image, text, text_position, padding)
+
+    image = add_border_only(image, (5, start_x - 5), (width - 5, start_x + 5 + len(sorted_items) * item_y))
+
+    for i, item in enumerate(sorted_items):
+        text = f"{item['name'][:10]}"
+        text_position = (5, start_x + i * item_y)
+        image = add_text_only(image, text, text_position)
+
+        text = f"{item['cpu_usage']:.0%}"
+        text_position = (5 + per_start_y * 2, start_x + i * item_y)
+        if item['cpu_usage'] > 0.8:
+            image = add_text_only(image, text, text_position, (255, 0, 0, 255))
+        elif item['cpu_usage'] > 0.5:
+            image = add_text_only(image, text, text_position, (255, 255, 0, 255))
+        else:
+            image = add_text_only(image, text, text_position)
+
+        text = f"{item['mem_usage_rate']:.0%}"
+        text_position = (5 + per_start_y * 3, start_x + i * item_y)
+        if item['mem_usage_rate'] > 0.95:
+            image = add_text_only(image, text, text_position, (255, 0, 0, 255))
+        elif item['mem_usage_rate'] > 0.8:
+            image = add_text_only(image, text, text_position, (255, 255, 0, 255))
+        else:
+            image = add_text_only(image, text, text_position)
+
+        text = f"{item['net_speed']}"
+        text_position = (5 + per_start_y * 4, start_x + i * item_y)
+        image = add_text_only(image, text, text_position)
+
+    # google generate_204
+    try:
+        # timeout 3s
+        google_status = requests.get("http://clients3.google.com/generate_204", timeout=3)
+        if google_status.status_code == 204:
+            text = "Google"
+            x = width // 2 // 3
+            text_position = (x, height - 30)
+            image = add_text_only(image, text, text_position, (0, 255, 0, 255))
+        else:
+            text = "Google"
+            x = width // 2 // 3
+            text_position = (x, height - 30)
+            image = add_text_only(image, text, text_position, (255, 0, 0, 255))
+    except requests.exceptions.RequestException as e:
+        text = "Google"
+        x = width // 2 // 3
+        text_position = (x, height - 30)
+        image = add_text_only(image, text, text_position, (255, 0, 0, 255))
+
+    # baidu
+    try:
+        # timeout 3s
+        baidu_status = requests.get("http://www.baidu.com", timeout=3)
+        if baidu_status.status_code == 200:
+            text = "Baidu"
+            x = width // 2 // 3 + width // 2
+            text_position = (x, height - 30)
+            image = add_text_only(image, text, text_position, (0, 255, 0, 255))
+        else:
+            text = "Baidu"
+            x = width // 2 // 3 + width // 2
+            text_position = (x, height - 30)
+            image = add_text_only(image, text, text_position, (255, 0, 0, 255))
+    except requests.exceptions.RequestException as e:
+        text = "Baidu"
+        x = width // 2 // 3 + width // 2
+        text_position = (x, height - 30)
+        image = add_text_only(image, text, text_position, (255, 0, 0, 255))
 
     image_array = np.array(image)
+
     return image_array
 
 
@@ -314,12 +425,14 @@ def open_device_by_id(vendor_id, product_id):
     global global_device
     print("Now Searching....")
     devices = hid.enumerate(vendor_id, product_id)
-    target_device_info = next(
-        (device for device in devices if device['vendor_id'] == vendor_id and device['product_id'] == product_id), None)
+    target_device_info = next((device for device in devices if device['vendor_id'] == vendor_id and device['product_id'] == product_id and device['interface_number'] == 1), None)
+
     if target_device_info:
         try:
+            path = target_device_info['path']
+
             device = hid.device()
-            device.open(vendor_id, product_id)
+            device.open_path(path)
             print(f"Opened S1 mini computer TFT screen device successfully.")
             global_device = device
             return True
@@ -372,7 +485,7 @@ def hex_string_to_byte_array_normal(hex_string):
 
 async def periodic_refresh_screen():
     while True:
-        await asyncio.sleep(5)
+        await asyncio.sleep(8)
         await sends_testing_background()
 
 
@@ -449,6 +562,12 @@ async def sends_testing_background(loading=False):
         else:
             # plot the image if the device is not opened
             Image.fromarray(org_image_array).show()
+
+            # cv2.destroyAllWindows()
+            # org_image_array = cv2.cvtColor(org_image_array, cv2.COLOR_RGB2BGR)
+            # cv2.imshow("Image", org_image_array)
+            # cv2.waitKey(0)  # Add this line
+
 
     except Exception as e:
         print(f"Error sending background data: {e}")

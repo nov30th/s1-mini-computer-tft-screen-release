@@ -163,4 +163,7 @@ core.exe
 core.bin
 core.dist/**
 core.build/**
-core.onefile-build/** */
+core.onefile-build/**
+
+release_files/**
+release_files.7z

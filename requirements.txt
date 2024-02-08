@@ -5,4 +5,5 @@ psutil
 pycryptodome
 proxmoxer
 requests
-opencv-python
+#opencv-python
+aiohttp

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*-coding:utf-8 -*-
 # @Author  : Nov30th, HOHO``
+import aiohttp
 
 import asyncio
 import base64
@@ -268,42 +269,48 @@ async def load_image_pve(loading=False):
     # google generate_204
     try:
         # timeout 3s
-        google_status = requests.get("http://clients3.google.com/generate_204", timeout=3)
-        if google_status.status_code == 204:
-            text = "Google"
-            x = width // 2 // 3
-            text_position = (x, height - 30)
-            image = add_text_only(image, text, text_position, (0, 255, 0, 255))
-        else:
-            text = "Google"
-            x = width // 2 // 3
-            text_position = (x, height - 30)
-            image = add_text_only(image, text, text_position, (255, 0, 0, 255))
-    except requests.exceptions.RequestException as e:
+        async with aiohttp.ClientSession() as session:
+            async with session.get("http://clients3.google.com/generate_204", timeout=3) as response:
+                if response.status == 204:
+                    text = "Google"
+                    x = width // 2 // 3
+                    text_position = (x, height - 30)
+                    image = add_text_only(image, text, text_position, (0, 255, 0, 255))
+                else:
+                    text = "Google"
+                    x = width // 2 // 3
+                    text_position = (x, height - 30)
+                    image = add_text_only(image, text, text_position, (255, 0, 0, 255))
+                    print("Google connection failed")
+    except:
         text = "Google"
         x = width // 2 // 3
         text_position = (x, height - 30)
         image = add_text_only(image, text, text_position, (255, 0, 0, 255))
+        print("Google connection failed")
 
     # baidu
     try:
         # timeout 3s
-        baidu_status = requests.get("http://www.baidu.com", timeout=3)
-        if baidu_status.status_code == 200:
-            text = "Baidu"
-            x = width // 2 // 3 + width // 2
-            text_position = (x, height - 30)
-            image = add_text_only(image, text, text_position, (0, 255, 0, 255))
-        else:
-            text = "Baidu"
-            x = width // 2 // 3 + width // 2
-            text_position = (x, height - 30)
-            image = add_text_only(image, text, text_position, (255, 0, 0, 255))
-    except requests.exceptions.RequestException as e:
-        text = "Baidu"
+        async with aiohttp.ClientSession() as session:
+            async with session.get("http://captive.apple.com/", timeout=3) as response:
+                if response.status == 200:
+                    text = "Apple"
+                    x = width // 2 // 3 + width // 2
+                    text_position = (x, height - 30)
+                    image = add_text_only(image, text, text_position, (0, 255, 0, 255))
+                else:
+                    text = "Apple"
+                    x = width // 2 // 3 + width // 2
+                    text_position = (x, height - 30)
+                    image = add_text_only(image, text, text_position, (255, 0, 0, 255))
+                    print("Baidu connection failed")
+    except:
+        text = "Apple"
         x = width // 2 // 3 + width // 2
         text_position = (x, height - 30)
         image = add_text_only(image, text, text_position, (255, 0, 0, 255))
+        print("Baidu connection failed")
 
     image_array = np.array(image)
 
@@ -517,18 +524,19 @@ def hex_string_to_byte_array(hex_string, total_length=4104):
 
 async def sends_testing_background(loading=False):
     global is_sending_background
-    is_sending_background = True
     try:
         # print("Sending background data...")
         # 你的sends_testing_background逻辑
         # 请在这里添加相应的异步发送数据代码
 
+        # org_image_array = load_image(loading)
+        org_image_array = await load_image_pve(loading)
+
+        is_sending_background = True
+
         pre_end_data = "55 a1 f2 00 00 00"
         data_to_send = hex_string_to_byte_array_with_00(pre_end_data)
         send_data(global_device, data_to_send)
-
-        # org_image_array = load_image(loading)
-        org_image_array = await load_image_pve(loading)
 
         if device_opened:
             rgb565_array = rgb_to_rgb565(org_image_array)

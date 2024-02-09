@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 # -*-coding:utf-8 -*-
 # @Author  : Nov30th, HOHO``
-import aiohttp
-
 import asyncio
 import base64
 import json
@@ -12,11 +10,11 @@ import time
 # noinspection PyUnresolvedReferences
 from sys import exit
 
+import aiohttp
 # import cv2
 import hid
 import numpy as np
 import psutil
-import requests
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
 from Crypto.Signature import pkcs1_15
@@ -42,6 +40,8 @@ network_latest_sent_snapshot_at = 0
 device_opened = False
 
 prev_net_stats = {}  # 保存前一次的网络流量状态
+
+image_type = ""
 
 
 def verify_image(image_path, signature_base64):
@@ -237,7 +237,7 @@ async def load_image_pve(loading=False):
     # padding = 5
     # image = add_text_and_border(image, text, text_position, padding)
 
-    image = add_border_only(image, (5, start_x - 5), (width - 5, start_x + 5 + len(sorted_items) * item_y))
+    image = add_border_only(image, (2, start_x - 2), (width - 2, start_x + 2 + len(sorted_items) * item_y))
 
     for i, item in enumerate(sorted_items):
         text = f"{item['name'][:10]}"
@@ -311,6 +311,196 @@ async def load_image_pve(loading=False):
         text_position = (x, height - 30)
         image = add_text_only(image, text, text_position, (255, 0, 0, 255))
         print("Baidu connection failed")
+
+    image_array = np.array(image)
+
+    return image_array
+
+
+async def load_image_pve_vertically(loading=False):
+    height = 320
+    width = 170
+    with open("config.json", "r") as f:
+        config = json.load(f)
+    proxmox = ProxmoxAPI(config['proxmox_host'], user=config['proxmox_user'], password=config['proxmox_password'],
+                         verify_ssl=False)
+
+    nodes = proxmox.nodes.get()
+    running_items = []
+
+    for node in nodes:
+        node_name = node['node']
+        # 获取该节点上的所有CT和VM
+        containers = proxmox.nodes(node_name).lxc.get()
+        virtual_machines = proxmox.nodes(node_name).qemu.get()
+
+        # 异步获取所有CT和VM的状态
+        # 异步获取所有CT和VM的状态，并计算网速
+        tasks = [fetch_status(proxmox, node_name, item, 'lxc', prev_net_stats) for item in containers if
+                 item['status'] == 'running']
+        tasks += [fetch_status(proxmox, node_name, vm, 'qemu', prev_net_stats) for vm in virtual_machines if
+                  vm['status'] == 'running']
+        results = await asyncio.gather(*tasks)
+
+        # 处理状态信息，提取所需数据
+        for status, net_speed in results:
+            mem_usage_rate = (status['mem'] / status['maxmem']) if 'mem' in status else None
+            net_speed_str = f"{net_speed / 1024 / 8:.0f}k" if net_speed < 1024 * 1024 * 8 else f"{net_speed / 1024 / 1024 / 8:.0f}m"
+            running_items.append({'id': status['vmid'], 'name': status.get('name', ''), 'cpu_usage': status['cpu'],
+                                  'mem_usage_rate': mem_usage_rate, 'net_speed': net_speed_str})
+
+    # 按CPU使用率排序并输出前5个
+    sorted_items = sorted(running_items, key=lambda x: x['cpu_usage'], reverse=True)[:5]
+    for item in sorted_items:
+        print(f"ID: {item['id']}, Name: {item['name']}, CPU Usage: {item['cpu_usage']:.0%}, "
+              f"Memory Usage: {item['mem_usage_rate']:.0%}, Net Speed: {item['net_speed']}")
+
+    level = 0
+    # if any cpu is over 80%, show warn.png
+    for item in sorted_items:
+        if item['cpu_usage'] > 0.95:
+            level = 2
+            break
+        if item['cpu_usage'] > 0.85:
+            level = 1
+            break
+    if level == 2:
+        image = load_image_file("error_shu.png").convert('RGBA')
+    elif level == 1:
+        image = load_image_file("warn_shu.png").convert('RGBA')
+    else:
+        image = load_image_file("init_shu.png").convert('RGBA')
+
+    # rotate the image 90 degrees
+    # image = image.rotate(90, expand=True)
+
+    start_x = 30
+    item_y = 50
+    per_start_y = 25
+    per_start_x = width // 3
+
+    #
+    # text = "PVE Status"
+    # text_position = (50, 50)
+    # padding = 5
+    # image = add_text_and_border(image, text, text_position, padding)
+
+    image = add_border_only(image, (2, start_x - 2), (width - 2, start_x + 2 + len(sorted_items) * item_y))
+
+    for i, item in enumerate(sorted_items):
+        text = f"{item['name'][:10]}"
+        text_position = (5, start_x + i * item_y)
+        image = add_text_only(image, text, text_position)
+
+        text = f"{item['cpu_usage']:.0%}"
+        text_position = (5, start_x + i * item_y + per_start_y)
+        image = add_text_only(image, text, text_position)
+
+        text = f"{item['mem_usage_rate']:.0%}"
+        text_position = (5 + per_start_x, start_x + i * item_y + per_start_y)
+        image = add_text_only(image, text, text_position)
+
+        text = f"{item['net_speed']}"
+        text_position = (5 + per_start_x * 2, start_x + i * item_y + per_start_y)
+        image = add_text_only(image, text, text_position)
+
+    # for i, item in enumerate(sorted_items):
+    #     text = f"{item['name'][:10]}"
+    #     text_position = (5, start_x + i * item_y)
+    #     image = add_text_only(image, text, text_position)
+    #
+    #     text = f"{item['cpu_usage']:.0%}"
+    #     text_position = (5 + per_start_y * 2, start_x + i * item_y)
+    #     if item['cpu_usage'] > 0.8:
+    #         image = add_text_only(image, text, text_position, (255, 0, 0, 255))
+    #     elif item['cpu_usage'] > 0.5:
+    #         image = add_text_only(image, text, text_position, (255, 255, 0, 255))
+    #     else:
+    #         image = add_text_only(image, text, text_position)
+    #
+    #     text = f"{item['mem_usage_rate']:.0%}"
+    #     text_position = (5 + per_start_y * 3, start_x + i * item_y)
+    #     if item['mem_usage_rate'] > 0.95:
+    #         image = add_text_only(image, text, text_position, (255, 0, 0, 255))
+    #     elif item['mem_usage_rate'] > 0.8:
+    #         image = add_text_only(image, text, text_position, (255, 255, 0, 255))
+    #     else:
+    #         image = add_text_only(image, text, text_position)
+    #
+    #     text = f"{item['net_speed']}"
+    #     text_position = (5 + per_start_y * 4, start_x + i * item_y)
+    #     image = add_text_only(image, text, text_position)
+
+    # google generate_204
+    try:
+        # timeout 3s
+        async with aiohttp.ClientSession() as session:
+            async with session.get("http://clients3.google.com/generate_204", timeout=3) as response:
+                if response.status == 204:
+                    text = "Google"
+                    x = width // 2 // 4
+                    text_position = (x, height - 25)
+                    image = add_text_only(image, text, text_position, (0, 255, 0, 255))
+                else:
+                    text = "Google"
+                    x = width // 2 // 4
+                    text_position = (x, height - 25)
+                    image = add_text_only(image, text, text_position, (255, 0, 0, 255))
+                    print("Google connection failed")
+    except:
+        text = "Google"
+        x = width // 2 // 4
+        text_position = (x, height - 25)
+        image = add_text_only(image, text, text_position, (255, 0, 0, 255))
+        print("Google connection failed")
+
+    # baidu
+    try:
+        # timeout 3s
+        async with aiohttp.ClientSession() as session:
+            async with session.get("http://captive.apple.com/", timeout=3) as response:
+                if response.status == 200:
+                    text = "Apple"
+                    x = width // 2 // 3 + width // 2.5
+                    text_position = (x, height - 25)
+                    image = add_text_only(image, text, text_position, (0, 255, 0, 255))
+                else:
+                    text = "Apple"
+                    x = width // 2 // 3 + width // 2.5
+                    text_position = (x, height - 25)
+                    image = add_text_only(image, text, text_position, (255, 0, 0, 255))
+                    print("Baidu connection failed")
+    except:
+        text = "Apple"
+        x = width // 2 // 3 + width // 2.5
+        text_position = (x, height - 25)
+        image = add_text_only(image, text, text_position, (255, 0, 0, 255))
+        print("Baidu connection failed")
+
+    current_machine_cpu = psutil.cpu_percent() / 100
+    current_machine_memory = psutil.virtual_memory().percent / 100
+    print(f"Current machine CPU: {current_machine_cpu:.0%}, Memory: {current_machine_memory:.0%}")
+
+    cpu_current_machine = f"CPU:{current_machine_cpu:.0%}"
+    memory_current_machine = f"MEM:{current_machine_memory:.0%}"
+    text_position = (5, height - 50)
+    if current_machine_cpu > 0.85:
+        image = add_text_only(image, cpu_current_machine, text_position, (255, 0, 0, 255))
+    if current_machine_cpu > 0.7:
+        image = add_text_only(image, cpu_current_machine, text_position, (255, 255, 0, 255))
+    else:
+        image = add_text_only(image, cpu_current_machine, text_position)
+
+    text_position = (width // 2, height - 50)
+    if current_machine_memory > 0.92:
+        image = add_text_only(image, memory_current_machine, text_position, (255, 0, 0, 255))
+    if current_machine_memory > 0.7:
+        image = add_text_only(image, memory_current_machine, text_position, (255, 255, 0, 255))
+    else:
+        image = add_text_only(image, memory_current_machine, text_position, (255, 255, 255, 180))
+
+    # rotate the image 90 degrees 逆时针
+    image = image.rotate(90, expand=True)
 
     image_array = np.array(image)
 
@@ -530,7 +720,10 @@ async def sends_testing_background(loading=False):
         # 请在这里添加相应的异步发送数据代码
 
         # org_image_array = load_image(loading)
-        org_image_array = await load_image_pve(loading)
+        if image_type == "shu":
+            org_image_array = await load_image_pve_vertically(loading)
+        else:
+            org_image_array = await load_image_pve(loading)
 
         is_sending_background = True
 
@@ -619,6 +812,12 @@ async def main():
     print("Author: Nov30th, HOHO``")
     print("Initializing device..")
     await open_device_async(1241, 64769)  # 异步打开设备
+
+    # reads the config.json file and finds the "image_type"
+    with open("config.json", "r") as f:
+        config = json.load(f)
+        global image_type
+        image_type = config['image_type']
 
     if global_device:
         send_task = asyncio.create_task(periodic_send_data())

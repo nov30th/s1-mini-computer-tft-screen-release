@@ -12,5 +12,10 @@
 1. Modify the config.json, change the PVE username and password
 2. chmod +x core.bin
 3. ./core.bin to start the program or put it into systemctl
+# Config file
 
-![Screen](1st.jpg "Screen")
+- "image_type" value could be "" (empty) or "shu". "shu" means vertical
+
+![Screen](1st.png "Screen")
+
+![Screen](2nd.png "Screen")

@@ -23,6 +23,9 @@ from proxmoxer import ProxmoxAPI
 from urllib3 import disable_warnings
 from urllib3.exceptions import InsecureRequestWarning
 
+screen_off_hour = 23
+screen_off_end_hour = 8
+
 # Disable InsecureRequestWarning
 disable_warnings(InsecureRequestWarning)
 
@@ -171,6 +174,11 @@ async def fetch_status(proxmox, node_name, item, item_type, prev_net_stats):
 
 
 async def load_image_pve(loading=False):
+    # checks current hour is in the range of screen off time
+    current_hour = int(time.strftime("%H"))
+    if screen_off_hour <= current_hour <= screen_off_end_hour or (screen_off_end_hour < screen_off_hour and (
+            current_hour >= screen_off_hour or current_hour <= screen_off_end_hour)):
+        return np.zeros((170, 320, 3), dtype=np.uint8)
     height = 170
     width = 320
     with open("config.json", "r") as f:
@@ -318,6 +326,11 @@ async def load_image_pve(loading=False):
 
 
 async def load_image_pve_vertically(loading=False):
+    # checks current hour is in the range of screen off time
+    current_hour = int(time.strftime("%H"))
+    if screen_off_hour <= current_hour <= screen_off_end_hour or (screen_off_end_hour < screen_off_hour and (
+            current_hour >= screen_off_hour or current_hour <= screen_off_end_hour)):
+        return np.zeros((170, 320, 3), dtype=np.uint8)
     height = 320
     width = 170
     with open("config.json", "r") as f:
@@ -816,8 +829,10 @@ async def main():
     # reads the config.json file and finds the "image_type"
     with open("config.json", "r") as f:
         config = json.load(f)
-        global image_type
+        global image_type, screen_off_end_hour, screen_off_hour
         image_type = config['image_type']
+        screen_off_hour = config['screen_off_hour']
+        screen_off_end_hour = config['screen_off_end_hour']
 
     if global_device:
         send_task = asyncio.create_task(periodic_send_data())

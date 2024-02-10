@@ -2,5 +2,7 @@
   "proxmox_host": "127.0.0.1",
   "proxmox_user": "root@pam",
   "proxmox_password": "123456",
-  "image_type": "shu"
+  "image_type": "shu",
+  "screen_off_hour": 23,
+  "screen_off_end_hour": 7
 }

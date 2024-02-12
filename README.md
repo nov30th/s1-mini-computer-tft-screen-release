@@ -16,6 +16,14 @@
 
 - "image_type" value could be "" (empty) or "shu". "shu" means vertical
 
+# Versions
+
+for PVE download the [PVE] version.
+
+for Linux/Windows/MacOS standalone download the [testing version 0.0.2](https://github.com/nov30th/s1-mini-computer-tft-screen-release/releases/tag/v0.0.2)
+
+(if you need any features, just let me know I will put them into the program)
+
 ![Screen](1st.png "Screen")
 
 ![Screen](2nd.png "Screen")

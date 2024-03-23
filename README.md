@@ -9,3 +9,7 @@ Vendor ID: 1241, Product ID: 64769
 
 Bitmap 565, swap 
 
+
+sudo apt-get install zlib1g-dev
+
+python 3.11

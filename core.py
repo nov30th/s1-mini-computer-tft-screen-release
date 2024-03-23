@@ -25,6 +25,11 @@ from urllib3.exceptions import InsecureRequestWarning
 
 screen_off_hour = 23
 screen_off_end_hour = 8
+proxy_type = ""
+proxy_host = ""
+proxy_port = ""
+proxy_user = ""
+proxy_password = ""
 
 # Disable InsecureRequestWarning
 disable_warnings(InsecureRequestWarning)
@@ -276,9 +281,13 @@ async def load_image_pve(loading=False):
 
     # google generate_204
     try:
+        if proxy_type and proxy_host and proxy_port:
+            proxy = f"{proxy_type}://{proxy_user}:{proxy_password}@{proxy_host}:{proxy_port}"
+        else:
+            proxy = None
         # timeout 3s
         async with aiohttp.ClientSession() as session:
-            async with session.get("http://clients3.google.com/generate_204", timeout=3) as response:
+            async with session.get("http://clients3.google.com/generate_204", timeout=3, proxy=proxy) as response:
                 if response.status == 204:
                     text = "Google"
                     x = width // 2 // 3
@@ -299,9 +308,13 @@ async def load_image_pve(loading=False):
 
     # baidu
     try:
+        if proxy_type and proxy_host and proxy_port:
+            proxy = f"{proxy_type}://{proxy_user}:{proxy_password}@{proxy_host}:{proxy_port}"
+        else:
+            proxy = None
         # timeout 3s
         async with aiohttp.ClientSession() as session:
-            async with session.get("http://captive.apple.com/", timeout=3) as response:
+            async with session.get("http://captive.apple.com/", timeout=3, proxy=proxy) as response:
                 if response.status == 200:
                     text = "Apple"
                     x = width // 2 // 3 + width // 2
@@ -829,10 +842,14 @@ async def main():
     # reads the config.json file and finds the "image_type"
     with open("config.json", "r") as f:
         config = json.load(f)
-        global image_type, screen_off_end_hour, screen_off_hour
+        global image_type, screen_off_end_hour, screen_off_hour, proxy_host, proxy_port, proxy_user, proxy_password
         image_type = config['image_type']
         screen_off_hour = config['screen_off_hour']
         screen_off_end_hour = config['screen_off_end_hour']
+        proxy_host = config['proxy_host']
+        proxy_port = config['proxy_port']
+        proxy_user = config['proxy_user']
+        proxy_password = config['proxy_password']
 
     if global_device:
         send_task = asyncio.create_task(periodic_send_data())

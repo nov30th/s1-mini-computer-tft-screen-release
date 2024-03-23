@@ -167,3 +167,4 @@ core.onefile-build/**
 
 release_files/**
 release_files.7z
+nuitka-crash-report.xml

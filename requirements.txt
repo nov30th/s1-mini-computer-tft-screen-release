@@ -7,3 +7,6 @@ proxmoxer
 requests
 #opencv-python
 aiohttp
+urllib3
+nuitka
+python_minifier

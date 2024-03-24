@@ -19,17 +19,18 @@ from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
 from Crypto.Signature import pkcs1_15
 from PIL import Image, ImageDraw, ImageFont
+from aiohttp_socks import ProxyConnector
 from proxmoxer import ProxmoxAPI
 from urllib3 import disable_warnings
 from urllib3.exceptions import InsecureRequestWarning
 
 screen_off_hour = 23
 screen_off_end_hour = 8
-proxy_type = ""
 proxy_host = ""
 proxy_port = ""
 proxy_user = ""
 proxy_password = ""
+proxy_connector = None
 
 # Disable InsecureRequestWarning
 disable_warnings(InsecureRequestWarning)
@@ -281,13 +282,9 @@ async def load_image_pve(loading=False):
 
     # google generate_204
     try:
-        if proxy_type and proxy_host and proxy_port:
-            proxy = f"{proxy_type}://{proxy_user}:{proxy_password}@{proxy_host}:{proxy_port}"
-        else:
-            proxy = None
         # timeout 3s
-        async with aiohttp.ClientSession() as session:
-            async with session.get("http://clients3.google.com/generate_204", timeout=3, proxy=proxy) as response:
+        async with aiohttp.ClientSession(connector=proxy_connector) as session:
+            async with session.get("http://clients3.google.com/generate_204", timeout=3) as response:
                 if response.status == 204:
                     text = "Google"
                     x = width // 2 // 3
@@ -308,13 +305,9 @@ async def load_image_pve(loading=False):
 
     # baidu
     try:
-        if proxy_type and proxy_host and proxy_port:
-            proxy = f"{proxy_type}://{proxy_user}:{proxy_password}@{proxy_host}:{proxy_port}"
-        else:
-            proxy = None
         # timeout 3s
-        async with aiohttp.ClientSession() as session:
-            async with session.get("http://captive.apple.com/", timeout=3, proxy=proxy) as response:
+        async with aiohttp.ClientSession(connector=proxy_connector) as session:
+            async with session.get("http://captive.apple.com/", timeout=3) as response:
                 if response.status == 200:
                     text = "Apple"
                     x = width // 2 // 3 + width // 2
@@ -325,13 +318,13 @@ async def load_image_pve(loading=False):
                     x = width // 2 // 3 + width // 2
                     text_position = (x, height - 30)
                     image = add_text_only(image, text, text_position, (255, 0, 0, 255))
-                    print("Baidu connection failed")
+                    print("Apple connection failed")
     except:
         text = "Apple"
         x = width // 2 // 3 + width // 2
         text_position = (x, height - 30)
         image = add_text_only(image, text, text_position, (255, 0, 0, 255))
-        print("Baidu connection failed")
+        print("Apple connection failed")
 
     image_array = np.array(image)
 
@@ -460,7 +453,7 @@ async def load_image_pve_vertically(loading=False):
     # google generate_204
     try:
         # timeout 3s
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(connector=proxy_connector) as session:
             async with session.get("http://clients3.google.com/generate_204", timeout=3) as response:
                 if response.status == 204:
                     text = "Google"
@@ -483,7 +476,7 @@ async def load_image_pve_vertically(loading=False):
     # baidu
     try:
         # timeout 3s
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(connector=proxy_connector) as session:
             async with session.get("http://captive.apple.com/", timeout=3) as response:
                 if response.status == 200:
                     text = "Apple"
@@ -495,13 +488,13 @@ async def load_image_pve_vertically(loading=False):
                     x = width // 2 // 3 + width // 2.5
                     text_position = (x, height - 25)
                     image = add_text_only(image, text, text_position, (255, 0, 0, 255))
-                    print("Baidu connection failed")
+                    print("Apple connection failed")
     except:
         text = "Apple"
         x = width // 2 // 3 + width // 2.5
         text_position = (x, height - 25)
         image = add_text_only(image, text, text_position, (255, 0, 0, 255))
-        print("Baidu connection failed")
+        print("Apple connection failed")
 
     current_machine_cpu = psutil.cpu_percent() / 100
     current_machine_memory = psutil.virtual_memory().percent / 100
@@ -842,7 +835,7 @@ async def main():
     # reads the config.json file and finds the "image_type"
     with open("config.json", "r") as f:
         config = json.load(f)
-        global image_type, screen_off_end_hour, screen_off_hour, proxy_host, proxy_port, proxy_user, proxy_password
+        global image_type, screen_off_end_hour, screen_off_hour, proxy_host, proxy_port, proxy_user, proxy_password, proxy_connector
         image_type = config['image_type']
         screen_off_hour = config['screen_off_hour']
         screen_off_end_hour = config['screen_off_end_hour']
@@ -850,6 +843,9 @@ async def main():
         proxy_port = config['proxy_port']
         proxy_user = config['proxy_user']
         proxy_password = config['proxy_password']
+        if proxy_host and proxy_port:
+            proxy_connector = ProxyConnector.from_url(f'socks5://{proxy_user}:{proxy_password}@{proxy_host}:{proxy_port}')
+            print(f"Proxy Connector created with {proxy_host}:{proxy_port}")
 
     if global_device:
         send_task = asyncio.create_task(periodic_send_data())

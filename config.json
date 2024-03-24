@@ -5,7 +5,7 @@
   "image_type": "shu",
   "screen_off_hour": 23,
   "screen_off_end_hour": 7,
-  "proxy_type": "socks5",
+  "enable_google_apple_network_connection_detection": true,
   "proxy_host": "",
   "proxy_port": 1081,
   "proxy_user": "",

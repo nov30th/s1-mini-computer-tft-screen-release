@@ -20,7 +20,9 @@
 
 for PVE download the [PVE] version.
 
-for Linux/Windows/MacOS standalone download the [testing version 0.0.2](https://github.com/nov30th/s1-mini-computer-tft-screen-release/releases/tag/v0.0.2)
+***for Linux/Windows/MacOS standalone download the [testing version 0.0.2](https://github.com/nov30th/s1-mini-computer-tft-screen-release/releases/tag/v0.0.2)***
+
+Currently there is very very basic version in standalone version which is testing version, as I'm personal use my pve version and quite busy these days, the standalone updates may delay.
 
 (if you need any features, just let me know I will put them into the program)
 

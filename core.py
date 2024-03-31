@@ -30,7 +30,6 @@ proxy_host = ""
 proxy_port = ""
 proxy_user = ""
 proxy_password = ""
-proxy_connector = None
 
 # Disable InsecureRequestWarning
 disable_warnings(InsecureRequestWarning)
@@ -283,8 +282,9 @@ async def load_image_pve(loading=False):
     # google generate_204
     try:
         # timeout 3s
+        proxy_connector = ProxyConnector.from_url(f'socks5://{proxy_user}:{proxy_password}@{proxy_host}:{proxy_port}', ssl=False)
         async with aiohttp.ClientSession(connector=proxy_connector) as session:
-            async with session.get("http://clients3.google.com/generate_204", timeout=3) as response:
+            async with session.get("http://clients3.google.com/generate_204", timeout=3, verify_ssl=False) as response:
                 if response.status == 204:
                     text = "Google"
                     x = width // 2 // 3
@@ -295,19 +295,20 @@ async def load_image_pve(loading=False):
                     x = width // 2 // 3
                     text_position = (x, height - 30)
                     image = add_text_only(image, text, text_position, (255, 0, 0, 255))
-                    print("Google connection failed")
-    except:
+                    print(f"Google connection failed with status code {response.status}")
+    except Exception as e:
         text = "Google"
         x = width // 2 // 3
         text_position = (x, height - 30)
         image = add_text_only(image, text, text_position, (255, 0, 0, 255))
-        print("Google connection failed")
+        print(f"Google connection failed {e}.")
 
     # baidu
     try:
         # timeout 3s
+        proxy_connector = ProxyConnector.from_url(f'socks5://{proxy_user}:{proxy_password}@{proxy_host}:{proxy_port}', ssl=False)
         async with aiohttp.ClientSession(connector=proxy_connector) as session:
-            async with session.get("http://captive.apple.com/", timeout=3) as response:
+            async with session.get("http://captive.apple.com/", timeout=3, verify_ssl=False) as response:
                 if response.status == 200:
                     text = "Apple"
                     x = width // 2 // 3 + width // 2
@@ -319,12 +320,12 @@ async def load_image_pve(loading=False):
                     text_position = (x, height - 30)
                     image = add_text_only(image, text, text_position, (255, 0, 0, 255))
                     print("Apple connection failed")
-    except:
+    except Exception as e:
         text = "Apple"
         x = width // 2 // 3 + width // 2
         text_position = (x, height - 30)
         image = add_text_only(image, text, text_position, (255, 0, 0, 255))
-        print("Apple connection failed")
+        print(f"Apple connection failed {e}")
 
     image_array = np.array(image)
 
@@ -453,8 +454,9 @@ async def load_image_pve_vertically(loading=False):
     # google generate_204
     try:
         # timeout 3s
+        proxy_connector = ProxyConnector.from_url(f'socks5://{proxy_user}:{proxy_password}@{proxy_host}:{proxy_port}', ssl=False)
         async with aiohttp.ClientSession(connector=proxy_connector) as session:
-            async with session.get("http://clients3.google.com/generate_204", timeout=3) as response:
+            async with session.get("http://clients3.google.com/generate_204", timeout=3, verify_ssl=False) as response:
                 if response.status == 204:
                     text = "Google"
                     x = width // 2 // 4
@@ -465,19 +467,20 @@ async def load_image_pve_vertically(loading=False):
                     x = width // 2 // 4
                     text_position = (x, height - 25)
                     image = add_text_only(image, text, text_position, (255, 0, 0, 255))
-                    print("Google connection failed")
-    except:
+                    print(f"Google connection failed with status code {response.status}")
+    except Exception as e:
         text = "Google"
         x = width // 2 // 4
         text_position = (x, height - 25)
         image = add_text_only(image, text, text_position, (255, 0, 0, 255))
-        print("Google connection failed")
+        print(f"Google connection failed {e}.")
 
     # baidu
     try:
         # timeout 3s
+        proxy_connector = ProxyConnector.from_url(f'socks5://{proxy_user}:{proxy_password}@{proxy_host}:{proxy_port}', ssl=False)
         async with aiohttp.ClientSession(connector=proxy_connector) as session:
-            async with session.get("http://captive.apple.com/", timeout=3) as response:
+            async with session.get("http://captive.apple.com/", timeout=3, verify_ssl=False) as response:
                 if response.status == 200:
                     text = "Apple"
                     x = width // 2 // 3 + width // 2.5
@@ -489,12 +492,12 @@ async def load_image_pve_vertically(loading=False):
                     text_position = (x, height - 25)
                     image = add_text_only(image, text, text_position, (255, 0, 0, 255))
                     print("Apple connection failed")
-    except:
+    except Exception as e:
         text = "Apple"
         x = width // 2 // 3 + width // 2.5
         text_position = (x, height - 25)
         image = add_text_only(image, text, text_position, (255, 0, 0, 255))
-        print("Apple connection failed")
+        print(f"Apple connection failed {e}")
 
     current_machine_cpu = psutil.cpu_percent() / 100
     current_machine_memory = psutil.virtual_memory().percent / 100
@@ -835,7 +838,7 @@ async def main():
     # reads the config.json file and finds the "image_type"
     with open("config.json", "r") as f:
         config = json.load(f)
-        global image_type, screen_off_end_hour, screen_off_hour, proxy_host, proxy_port, proxy_user, proxy_password, proxy_connector
+        global image_type, screen_off_end_hour, screen_off_hour, proxy_host, proxy_port, proxy_user, proxy_password
         image_type = config['image_type']
         screen_off_hour = config['screen_off_hour']
         screen_off_end_hour = config['screen_off_end_hour']
@@ -844,8 +847,7 @@ async def main():
         proxy_user = config['proxy_user']
         proxy_password = config['proxy_password']
         if proxy_host and proxy_port:
-            proxy_connector = ProxyConnector.from_url(f'socks5://{proxy_user}:{proxy_password}@{proxy_host}:{proxy_port}')
-            print(f"Proxy Connector created with {proxy_host}:{proxy_port}")
+            print(f"Proxy with {proxy_host}:{proxy_port}")
 
     if global_device:
         send_task = asyncio.create_task(periodic_send_data())

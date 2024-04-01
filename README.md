@@ -3,7 +3,7 @@
 ![S1](product.png "S1")
 
 
-As there is some "little kids" say why I'm not open source, why they can not change images for they make their own product to share, the reason is currently I am busy on my work, and this project is helf-done which just finsihed basic funcations. 
+As there is some "little kids" say why I'm not open source, why they can not change images for they make their own product to share, the reason is currently I am busy on my work, and this project is half-done which just finsihed basic funcations. 
 
 I did research on the TFT data struct on my own, and now there is someone also shared the data struct that if the "kids" who complain of my project, pls just make it.
 

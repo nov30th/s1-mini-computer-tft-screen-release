@@ -2,12 +2,13 @@
 
 ![S1](product.png "S1")
 
+Once this project receives over 100 stars, I will open-source it. It's just a Python file, so you can modify anything you want.
 
-As there is some "little kids" say why I'm not open source, why they can not change images for they make their own product to share, the reason is currently I am busy on my work, and this project is half-done which just finsihed basic funcations. 
+Currently, as I am busy with my work, I am archiving this release project, meaning there will be no updates. The latest PVE version, which I am using, is the same as the downloadable one and suits my daily needs.
 
-I did research on the TFT data struct on my own, and now there is someone also shared the data struct that if the "kids" who complain of my project, pls just make it.
+I was planning to integrated my code with the [beatfuil screens](https://github.com/mathoudebine/turing-smart-screen-python/tree/main) but I just put the machine as PVE server and don't want to touch it. **The initial excitement when I first bought it has passed.**
 
-I will open source or make a perfect release on my free time once I finsihed my own work of this period, I am not the noob and I don't like the "kids" to get my half-done project then add some features say "I made it".
+If you don't use the PVE features or need open source ones, can have try with [this one from tjaworski](https://github.com/tjaworski/AceMagic-S1-LED-TFT-Linux/tree/main/s1panel) that he open source a program for screen, not the PVE version, written in npm language.
 
 # Steps
 

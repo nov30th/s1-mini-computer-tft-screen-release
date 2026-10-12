@@ -1,0 +1,65 @@
+# s1screen config / 配置文件
+# Copy to config.toml (the menu does this for you), edit, then restart:
+#   ./s1screen.py restart        (or: systemctl restart s1screen)
+# 复制为 config.toml（菜单会自动复制），修改后重启服务生效。
+
+[screen]
+orientation = "portrait"      # portrait = 竖屏 170x320 | landscape = 横屏 320x170
+refresh = 10                  # seconds per redraw; the panel needs ~9 s per full frame
+                              # 刷新间隔（秒），屏幕整帧刷新本身就要约 9 秒
+ring_storage = "local-lvm"    # storage shown in the 4th ring / 第 4 个圆环显示哪个存储
+net_iface = "vmbr0"           # host NIC for the ↓↑ speed / 主机网速取哪块网卡
+# Backgrounds: replace the PNG files in assets/bg/ (same size) to use your own.
+# 背景图：直接替换 assets/bg/ 里的同尺寸 PNG 即可。
+
+[night]                       # black screen + LED night preset / 夜间熄屏
+enabled = true
+start = "23:00"
+end = "07:00"
+
+[pve]
+host = "127.0.0.1"            # the S1 itself is the PVE host / S1 本机就是 PVE
+port = 8006
+verify_ssl = false
+# Recommended: read-only API token. Run `./s1screen.py token` to create one automatically.
+# 推荐只读 API Token，运行 `./s1screen.py token` 自动创建并写入这里。
+token_id = ""                 # e.g. root@pam!s1screen
+token_secret = ""
+# Or password login (not recommended) / 或者用密码登录（不推荐）
+user = "root@pam"
+password = ""
+ignore = []                   # vmids to hide, e.g. [102, 9000] / 不显示、不告警的 VMID
+
+[aliases]                     # short names on screen / 屏幕上的短名字
+# 501 = "owrt-main"
+
+[thresholds]                  # [warn, critical] -> yellow / red / [警告, 严重]
+cpu = [0.70, 0.90]            # host CPU / 宿主机 CPU
+mem = [0.85, 0.95]            # host memory / 宿主机内存
+temp = [75, 90]               # CPU package °C
+storage = [0.80, 0.90]
+guest_cpu = [0.85, 0.95]
+guest_mem = [0.90, 0.97]
+
+[probe]                       # connectivity dots at the bottom / 底部外网连通性检测
+enabled = true
+interval = 30
+proxy = ""                    # e.g. "socks5h://192.168.1.2:1080"
+targets = [
+  { name = "Google", url = "http://clients3.google.com/generate_204", status = 204 },
+  { name = "Apple", url = "http://captive.apple.com/", status = 200 },
+]
+
+[led]
+# Front LED strip, a CH340 (1a86:7523) on an internal USB port.
+# 前面板灯条，由主板内置 USB 口上的 CH340 控制。
+# If you pass that CH340 through to a VM (e.g. Home Assistant), set enabled = false.
+# 如果这个 CH340 已直通给虚拟机（例如 HA），请设为 false。
+enabled = true
+port = "auto"                 # auto = the CH340 on a fixed internal port, never an external one
+                              # 或指定，例如 "/dev/serial/by-path/pci-0000:00:14.0-usb-0:4:1.0-port0"
+# mode: rainbow | breathing | cycle | auto | off     brightness / speed: 1-5
+normal = { mode = "cycle", brightness = 2, speed = 2 }
+warn = { mode = "breathing", brightness = 4, speed = 3 }
+error = { mode = "rainbow", brightness = 5, speed = 5 }
+night = { mode = "off" }

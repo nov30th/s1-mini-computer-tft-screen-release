@@ -5,4 +5,4 @@ venv/
 
 # local config may hold an API token
 config.toml
-preview*.png
+/preview*.png
